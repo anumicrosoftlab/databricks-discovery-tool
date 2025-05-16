@@ -1,4 +1,4 @@
-# databricks-discovery-tool
+# Databricks Discovery Tool
 
 ## Overview
 
