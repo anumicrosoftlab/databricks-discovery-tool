@@ -47,12 +47,22 @@ The script outputs a consolidated JSON summary file named `databricks_workspace_
     cd tooling
     ~~~
 
-3. Update the `config.json` file with your Databricks API token in the following format:
-    ~~~json
+3.Update the `config.json` file with your url and Databricks PAT token in the following format:
+
+~~~json
+{
+  "workspaces": [
     {
-      "token": "<YOUR_DATABRICKS_BEARER_TOKEN>"
+      "url": "adb-<workspace-id-1>.<region>.azuredatabricks.net",
+      "token": "dapi<your-token-1>"
+    },
+    {
+      "url": "adb-<workspace-id-2>.<region>.azuredatabricks.net",
+      "token": "dapi<your-token-2>"
     }
-    ~~~
+  ]
+}
+~~~
 
 4. Run the script with the config file:
     ~~~bash
