@@ -56,7 +56,7 @@ The script outputs a consolidated JSON summary file named `databricks_workspace_
 
 4. Run the script with the config file:
     ~~~bash
-    python fetchall.py --config config.json
+    python etch_all_workspace_metadata.py --config config.json
     ~~~
   
 5. Output will be written to `databricks_workspace_summary.json`.
