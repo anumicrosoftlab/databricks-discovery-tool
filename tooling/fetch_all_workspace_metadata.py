@@ -4,9 +4,9 @@ import subprocess
 import re
 import base64
 import os
-import argparse
 from tenacity import retry, wait_fixed, stop_after_attempt
 from datetime import datetime, timezone
+import argparse
 
 # -------------------------
 # Retry-decorated GET
@@ -133,11 +133,21 @@ def list_jobs_and_runs(workspace_url, token):
     jobs_data = []
 
     try:
-        jobs = robust_get(f"{base_url}/list", headers).json().get("jobs", [])
-        for job in jobs:
-            job_id = job.get("job_id")
+        # Step 1: List all jobs (only gives job_id and some metadata)
+        job_list = robust_get(f"{base_url}/list", headers).json().get("jobs", [])
+
+        for job_summary in job_list:
+            job_id = job_summary.get("job_id")
+
+            # Step 2: Get full job settings using jobs/get
+            job_detail_url = f"{base_url}/get?job_id={job_id}"
+            job_detail = robust_get(job_detail_url, headers).json()
+            settings = job_detail.get("settings", {})
+
+            # Step 3: Get last 3 runs
             job_runs_url = f"{base_url}/runs/list?job_id={job_id}&limit=3"
             runs = robust_get(job_runs_url, headers).json().get("runs", [])
+            
             run_details = [{
                 "run_id": run.get("run_id"),
                 "state": run.get("state", {}).get("life_cycle_state"),
@@ -145,11 +155,14 @@ def list_jobs_and_runs(workspace_url, token):
                 "start_time": datetime.fromtimestamp(run.get("start_time", 0)/1000, tz=timezone.utc).isoformat(),
                 "end_time": datetime.fromtimestamp(run.get("end_time", 0)/1000, tz=timezone.utc).isoformat() if run.get("end_time") else None
             } for run in runs]
+
             jobs_data.append({
                 "job_id": job_id,
-                "name": job.get("settings", {}).get("name"),
+                "name": settings.get("name"),
+                "settings": settings,
                 "runs": run_details
             })
+
     except Exception as e:
         print(f"\u274c Failed to fetch job data: {e}")
 
@@ -223,54 +236,77 @@ def get_workspace_url_from_cli():
                                 check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         workspaces = json.loads(result.stdout)
         if not workspaces:
-            raise Exception("No Databricks workspace found.")
-        return workspaces[0]["workspaceUrl"]
+            raise Exception("No workspaces found in CLI output")
+        workspace_url = workspaces[0]["workspaceUrl"]
+        if not workspace_url.startswith("https://"):
+            workspace_url = "https://" + workspace_url
+        workspace_url = workspace_url.replace("https://", "")
+        return workspace_url
     except Exception as e:
-        print("\u274c Failed to get workspace URL:", e)
-        exit(1)
+        print(f"\u274c Failed to get workspace URL from CLI: {e}")
+        return None
 
 # -------------------------
-# Main
+# Config loader
+# -------------------------
+def load_config(config_file):
+    with open(config_file) as f:
+        return json.load(f)
+
+# -------------------------
+# Main execution
 # -------------------------
 def main():
-    parser = argparse.ArgumentParser(description="Databricks Full Environment Scanner")
-    parser.add_argument("--token", required=True, help="Databricks Personal Access Token")
+    parser = argparse.ArgumentParser(description="Databricks Workspace Scanner with Jobs Run fetching")
+    parser.add_argument("--config", help="Path to config.json", default="config.json")
     args = parser.parse_args()
 
-    token = args.token
+    config = load_config(args.config)
+    token = config.get("token")
+    if not token:
+        print("ERROR: Bearer token missing in config.json")
+        sys.exit(1)
+
     workspace_url = get_workspace_url_from_cli()
-    instance_url = f"https://{workspace_url}"
+    if not workspace_url:
+        print("\u274c Could not determine workspace URL.")
+        return
 
-    print(f"\U0001f9e0 Workspace: {workspace_url}")
-    print("\U0001f50d Scanning clusters and libraries...")
+    print(f"Workspace URL: {workspace_url}")
+
+    print("\nFetching cluster and library info...")
     cluster_info = extract_cluster_info(workspace_url, token)
+    print(f"Clusters found: {len(cluster_info)}")
 
-    print("\U0001f50d Scanning SQL warehouses...")
-    sql_warehouses = list_sql_warehouses(instance_url, token)
+    print("\nFetching SQL Warehouses...")
+    sql_warehouses = list_sql_warehouses(f"https://{workspace_url}", token)
+    print(f"SQL Warehouses found: {len(sql_warehouses)}")
 
-    print("\U0001f50d Scanning Unity Catalog...")
-    unity_catalog_info = collect_unity_catalog_structure(workspace_url, token)
+    print("\nFetching Unity Catalog structure...")
+    unity_catalog = collect_unity_catalog_structure(workspace_url, token)
+    print(f"Unity Catalog entries found: {len(unity_catalog)}")
 
-    print("\U0001f50d Scanning job runs...")
-    job_data = list_jobs_and_runs(workspace_url, token)
+    print("\nFetching Jobs and Runs...")
+    jobs = list_jobs_and_runs(workspace_url, token)
+    print(f"Jobs found: {len(jobs)}")
 
-    print("\U0001f50d Scanning notebooks...")
-    notebook_info = list_notebooks_for_workspace(workspace_url, token)
+    print("\nFetching Notebooks...")
+    notebooks = list_notebooks_for_workspace(workspace_url, token)
+    print(f"Notebooks found: {len(notebooks)}")
 
-    result = {
-        "workspace": workspace_url,
+    summary = {
         "clusters": cluster_info,
         "sql_warehouses": sql_warehouses,
-        "unity_catalog": unity_catalog_info,
-        "jobs": job_data,
-        "notebooks": notebook_info
+        "unity_catalog": unity_catalog,
+        "jobs": jobs,
+        "notebooks": notebooks
     }
 
-    output_file = "databricks_env_scan.json"
-    with open(output_file, "w") as f:
-        json.dump(result, f, indent=2)
-    
-    print(f"\n✅ Environment scan complete. Results saved to: {output_file}")
+    # Write to JSON file
+    with open("databricks_workspace_summary.json", "w") as f:
+        json.dump(summary, f, indent=2)
+
+    print("\nSummary saved to databricks_workspace_summary.json")
 
 if __name__ == "__main__":
     main()
