@@ -4,6 +4,7 @@ import subprocess
 import re
 import base64
 import os
+import sys
 from tenacity import retry, wait_fixed, stop_after_attempt
 from datetime import datetime, timezone
 import argparse
@@ -133,18 +134,15 @@ def list_jobs_and_runs(workspace_url, token):
     jobs_data = []
 
     try:
-        # Step 1: List all jobs (only gives job_id and some metadata)
         job_list = robust_get(f"{base_url}/list", headers).json().get("jobs", [])
 
         for job_summary in job_list:
             job_id = job_summary.get("job_id")
 
-            # Step 2: Get full job settings using jobs/get
             job_detail_url = f"{base_url}/get?job_id={job_id}"
             job_detail = robust_get(job_detail_url, headers).json()
             settings = job_detail.get("settings", {})
 
-            # Step 3: Get last 3 runs
             job_runs_url = f"{base_url}/runs/list?job_id={job_id}&limit=3"
             runs = robust_get(job_runs_url, headers).json().get("runs", [])
             
@@ -228,85 +226,66 @@ def list_notebooks_for_workspace(workspace_url, token, path="/"):
     return notebooks
 
 # -------------------------
-# Workspace from CLI
+# Load config.json for multiple workspaces
 # -------------------------
-def get_workspace_url_from_cli():
+def load_config(config_path="config.json"):
     try:
-        result = subprocess.run(["az", "databricks", "workspace", "list", "--output", "json"],
-                                check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        workspaces = json.loads(result.stdout)
-        if not workspaces:
-            raise Exception("No workspaces found in CLI output")
-        workspace_url = workspaces[0]["workspaceUrl"]
-        if not workspace_url.startswith("https://"):
-            workspace_url = "https://" + workspace_url
-        workspace_url = workspace_url.replace("https://", "")
-        return workspace_url
+        with open(config_path) as f:
+            data = json.load(f)
+            # Expecting a structure like:
+            # {"workspaces": [{"url": "host", "token": "token"}, ...]}
+            return data.get("workspaces", [])
     except Exception as e:
-        print(f"\u274c Failed to get workspace URL from CLI: {e}")
-        return None
+        print(f"\u274c Failed to load config.json: {e}")
+        return []
 
 # -------------------------
-# Config loader
+# Compose full workspace summary
 # -------------------------
-def load_config(config_file):
-    with open(config_file) as f:
-        return json.load(f)
+def get_workspace_summary(workspace):
+    url = workspace["url"]
+    token = workspace["token"]
+    print(f"\n🔍 Gathering data for workspace: {url}")
 
-# -------------------------
-# Main execution
-# -------------------------
-def main():
-    parser = argparse.ArgumentParser(description="Databricks Workspace Scanner with Jobs Run fetching")
-    parser.add_argument("--config", help="Path to config.json", default="config.json")
-    args = parser.parse_args()
-
-    config = load_config(args.config)
-    token = config.get("token")
-    if not token:
-        print("ERROR: Bearer token missing in config.json")
-        sys.exit(1)
-
-    workspace_url = get_workspace_url_from_cli()
-    if not workspace_url:
-        print("\u274c Could not determine workspace URL.")
-        return
-
-    print(f"Workspace URL: {workspace_url}")
-
-    print("\nFetching cluster and library info...")
-    cluster_info = extract_cluster_info(workspace_url, token)
-    print(f"Clusters found: {len(cluster_info)}")
-
-    print("\nFetching SQL Warehouses...")
-    sql_warehouses = list_sql_warehouses(f"https://{workspace_url}", token)
-    print(f"SQL Warehouses found: {len(sql_warehouses)}")
-
-    print("\nFetching Unity Catalog structure...")
-    unity_catalog = collect_unity_catalog_structure(workspace_url, token)
-    print(f"Unity Catalog entries found: {len(unity_catalog)}")
-
-    print("\nFetching Jobs and Runs...")
-    jobs = list_jobs_and_runs(workspace_url, token)
-    print(f"Jobs found: {len(jobs)}")
-
-    print("\nFetching Notebooks...")
-    notebooks = list_notebooks_for_workspace(workspace_url, token)
-    print(f"Notebooks found: {len(notebooks)}")
+    clusters = extract_cluster_info(url, token)
+    warehouses = list_sql_warehouses(f"https://{url}", token)
+    unity_catalog = collect_unity_catalog_structure(url, token)
+    jobs = list_jobs_and_runs(url, token)
+    notebooks = list_notebooks_for_workspace(url, token)
 
     summary = {
-        "clusters": cluster_info,
-        "sql_warehouses": sql_warehouses,
+        "workspace_url": url,
+        "clusters": clusters,
+        "sql_warehouses": warehouses,
         "unity_catalog": unity_catalog,
         "jobs": jobs,
         "notebooks": notebooks
     }
 
-    # Write to JSON file
-    with open("databricks_workspace_summary.json", "w") as f:
-        json.dump(summary, f, indent=2)
+    return summary
 
-    print("\nSummary saved to databricks_workspace_summary.json")
+# -------------------------
+# Main
+# -------------------------
+def main():
+    parser = argparse.ArgumentParser(description="Databricks workspace summary collector")
+    parser.add_argument("--config", default="config.json", help="Path to config.json with workspace URLs and tokens")
+    parser.add_argument("--output", default="databricks_summary.json", help="Output JSON file")
+    args = parser.parse_args()
+
+    workspaces = load_config(args.config)
+    if not workspaces:
+        print("No workspaces found in config.json")
+        sys.exit(1)
+
+    all_summaries = []
+    for ws in workspaces:
+        summary = get_workspace_summary(ws)
+        all_summaries.append(summary)
+
+    with open(args.output, "w") as f:
+        json.dump(all_summaries, f, indent=2)
+    print(f"\n✅ All workspace summaries saved to {args.output}")
 
 if __name__ == "__main__":
     main()
