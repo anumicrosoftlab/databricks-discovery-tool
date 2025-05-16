@@ -64,7 +64,7 @@ The script outputs a consolidated JSON summary file named `databricks_workspace_
 This section outlines the key fields extracted from the Databricks workspace JSON summary.
 
 ## 1. Clusters
-- **clusters**: Object containing cluster details (currently empty in this summary).
+- **clusters**: Object containing cluster details
 
 ---
 
