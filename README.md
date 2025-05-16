@@ -40,7 +40,7 @@ The script outputs a consolidated JSON summary file named `databricks_workspace_
 
 1. Clone the repository in Azure cli:
   ~~~bash
-    git clone <repository-url>
+    git clone https://github.com/anumicrosoftlab/databricks-discovery-tool.git
   ~~~
 2. Change directory to `tooling`:
     ~~~bash
