@@ -36,15 +36,30 @@ The script outputs a consolidated JSON summary file named `databricks_workspace_
 
 ---
 
-## Configuration
+## Steps
 
-Create a `config.json` file containing your Databricks API token in the following format:
+1. Clone the repository in Azure cli:
+  ~~~bash
+    git clone <repository-url>
+  ~~~
+2. Change directory to `tooling`:
+    ~~~bash
+    cd tooling
+    ~~~
 
-~~~json
-{
-  "token": "<YOUR_DATABRICKS_BEARER_TOKEN>"
-}
-~~~
+3. Update the `config.json` file with your Databricks API token in the following format:
+    ~~~json
+    {
+      "token": "<YOUR_DATABRICKS_BEARER_TOKEN>"
+    }
+    ~~~
+
+4. Run the script with the config file:
+    ~~~bash
+    python fetchall.py --config config.json
+    ~~~
+  
+5. Output will be written to `databricks_workspace_summary.json`.
 
 This section outlines the key fields extracted from the Databricks workspace JSON summary.
 
