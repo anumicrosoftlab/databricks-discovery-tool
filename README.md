@@ -85,10 +85,10 @@ Each job includes:
 ---
 
 ## 5. Notebooks
-- path
-- default_language
-- embedded_languages
-- other_magics"
+- `path`
+- `default_language`
+- `embedded_languages`
+- `other_magics`
 
 ## Next Version (Upcoming Enhancements)
 
