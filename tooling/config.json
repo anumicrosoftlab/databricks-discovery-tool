@@ -1,3 +1,12 @@
 {
-  "token": <PAT token here>
+  "workspaces": [
+    {
+      "url": "adb-<workspace-id-1>.<region>.azuredatabricks.net",
+      "token": "dapi<your-token-1>"
+    },
+    {
+      "url": "adb-<workspace-id-2>.<region>.azuredatabricks.net",
+      "token": "dapi<your-token-2>"
+    }
+  ]
 }
